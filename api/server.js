@@ -1,28 +1,47 @@
 const express = require("express");
 const axios = require("axios");
+const cors = require("cors");
+
 const app = express();
 const port = 3000;
 
-app.use(express.json());
+// Importação dos arquivos
+const routes = require("./router");
+const midlewareWebToken = require("./midlewareToken");
+const { login } = require("./login");
 
+// Lista de usuários simulada
 let usuarios = [
-  { id: 1, nome: "Luis", email: "luis.rufino@exemplo.com", cep: "37074010" },
+  { id: 1, nome: "Luis Filipe", email: "luis.rufino@exemplo.com", cep: "37074010" },
   { id: 2, nome: "Ana", email: "ana.carolina@exemplo.com", cep: "37074010" },
 ];
 
-app.get("/usuarios", async (req, res) => {
+//  Configuração de middlewares
+app.use(express.json());
+app.use(cors({
+  origin: "*",
+  allowedHeaders: ["Authorization", "Content-Type"],
+}));
+
+//  Middleware para debugging (remova se não precisar)
+app.use((req, res, next) => {
+  console.log("Headers recebidos:", req.headers);
+  console.log("Authorization:", req.headers.authorization); // Exibir apenas o header Authorization
+  next();
+});
+
+//  Rota de login (corrigida e mantida antes das outras)
+app.post("/usuarios/login", login);
+
+//  Rotas protegidas com middleware de autenticação
+app.use("/usuarios", midlewareWebToken, routes);
+
+//  Rota para listar usuários (corrigida)
+app.get("/usuarios", midlewareWebToken, async (req, res) => {
   try {
     for (let usuario of usuarios) {
-      if (
-        !usuario.logradouro ||
-        !usuario.bairro ||
-        !usuario.localidade ||
-        !usuario.uf
-      ) {
-        const response = await axios.get(
-          `https://viacep.com.br/ws/${usuario.cep}/json/`
-        );
-
+      if (!usuario.logradouro || !usuario.bairro || !usuario.localidade || !usuario.uf) {
+        const response = await axios.get(`https://viacep.com.br/ws/${usuario.cep}/json/`);
         if (!response.data.erro) {
           usuario.logradouro = response.data.logradouro;
           usuario.bairro = response.data.bairro;
@@ -31,13 +50,13 @@ app.get("/usuarios", async (req, res) => {
         }
       }
     }
-
     res.json(usuarios);
   } catch (error) {
     res.status(500).json({ erro: "Erro ao buscar os endereços" });
   }
 });
 
+//  Rota para criar um novo usuário
 app.post("/usuarios", async (req, res) => {
   const { nome, email, cep } = req.body;
 
@@ -54,8 +73,7 @@ app.post("/usuarios", async (req, res) => {
 
     const { logradouro, bairro, localidade, uf } = response.data;
 
-    const novoId =
-      usuarios.length > 0 ? Math.max(...usuarios.map((u) => u.id)) + 1 : 1;
+    const novoId = usuarios.length > 0 ? Math.max(...usuarios.map((u) => u.id)) + 1 : 1;
     const novoUsuario = {
       id: novoId,
       nome,
@@ -74,6 +92,7 @@ app.post("/usuarios", async (req, res) => {
   }
 });
 
+//  Rota para atualizar um usuário
 app.put("/usuarios/:id", async (req, res) => {
   const { id } = req.params;
   const { nome, email, cep } = req.body;
@@ -88,9 +107,7 @@ app.put("/usuarios/:id", async (req, res) => {
   }
 
   try {
-    const response = await axios.get(
-      `https://viacep.com.br/ws/${cep.replace(/\D/g, "")}/json/`
-    );
+    const response = await axios.get(`https://viacep.com.br/ws/${cep.replace(/\D/g, "")}/json/`);
 
     if (response.data.erro) {
       return res.status(400).json({ erro: "CEP inválido ou não encontrado" });
@@ -112,6 +129,7 @@ app.put("/usuarios/:id", async (req, res) => {
   }
 });
 
+//  Iniciar o servidor
 app.listen(port, () => {
   console.log(`Servidor rodando em http://localhost:${port}`);
 });
